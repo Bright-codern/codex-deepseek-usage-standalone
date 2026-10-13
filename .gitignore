@@ -1,0 +1,13 @@
+# 本机配置与运行产物
+config.json
+settings.json
+last-payload.json
+*.log
+*.bak
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
