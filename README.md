@@ -10,7 +10,7 @@
 
 点开就是一张小卡片：只有两行数字、同步时间和刷新按钮；不点刷新时默认每 360 秒自动同步一次。
 
-> 「账户总额」= 充值余额 + 赠送额度，只充过值时两者相同，摆两遍没有意义，所以只显示充值余额。
+> 卡片显示的「账户余额」= 充值余额 + 赠送余额，与 DeepSeek 官网的账户余额口径一致。
 
 ---
 
@@ -40,7 +40,7 @@ Codex 启动
 
 | 指标 | 来源 | 说明 |
 |---|---|---|
-| 充值余额 | `https://api.deepseek.com/user/balance` | 官方接口，取 `topped_up_balance` |
+| 账户余额 | `https://api.deepseek.com/user/balance` | 官方接口，`topped_up_balance` + `granted_balance` |
 | 今日消费 | `https://platform.deepseek.com/api/v0/usage/by_api_key/cost` | 网页版 `platform.deepseek.com/usage` 选「今日」看到的数字 |
 
 今日消费的登录态（`userToken`）只从 **Codex 内置浏览器**的 Local Storage 读取：

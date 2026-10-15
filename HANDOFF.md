@@ -1,6 +1,6 @@
 # DeepSeek 消耗 · 维护与交接文档
 
-> 版本：`1.1.0`（菜单栏卡片 `deepseek-usage-panel.js` 为 `1.0.12`）
+> 版本：`1.1.1`（菜单栏卡片 `deepseek-usage-panel.js` 为 `1.0.13`）
 > 平台：Windows 10 / 11，仅在 Codex 桌面端（商店版 MSIX）+ Codex 内置浏览器登录 DeepSeek 的组合上验证。
 > 安装位置：`%LOCALAPPDATA%\Programs\DeepSeekUsage`
 
@@ -15,7 +15,8 @@
 |---|---|---|
 | `mcp-server.ps1` | Codex（按 `config.toml` 的 MCP 注册） | 拉起助手；检测缺少调试端口时排队自动修复 |
 | `deepseek-usage-helper.ps1` | `mcp-server.ps1` | 取余额 / 取今日消费；通过 CDP 注入卡片并推送数据 |
-| `auto-restart.ps1` | 计划任务（由 `mcp-server.ps1` 创建并运行） | 等若干秒后重启 Codex 并带上调试端口 |
+| `auto-restart.ps1` | 计划任务（由 `mcp-server.ps1` 创建并运行） | 等若干秒后调用启动器；Codex 未运行则跳过 |
+| `finish-launch.ps1` | 计划任务（由 `launch-codex.ps1` 在关 Codex 之前预先创建） | 独立收尾：确认 Codex 已退出后按 AUMID 带端口拉起；含宽限期，避免与启动器互相打架 |
 | `deepseek-usage-panel.js` | 由助手注入页面 | 只负责界面：菜单栏按钮、卡片、刷新 |
 
 核心原则：页面脚本不取任何数据；取数与凭证解析全部在助手进程里完成。
@@ -33,6 +34,10 @@
 菜单栏卡片依赖 CDP 端口，而商店版 Codex 有单实例锁：**已经运行的实例不会接受 `--remote-debugging-port`**。因此必须在启动时带上该参数，也就是需要重启一次 Codex。
 
 自动修复流程：`mcp-server.ps1` 检测端口缺失 → 记状态（会话 / 冷却 / 失败计数）→ 通过计划任务派生 `auto-restart.ps1` → 等待 `autoRestartDelaySeconds` → 复查端口 → 调用 `launch-codex.ps1` 完成重启。
+
+**双保险**：`launch-codex.ps1` 在动手关 Codex **之前**，会先用计划任务埋一个独立的 `finish-launch.ps1`。
+这样即使关 Codex 的进程链中途被杀（实测发生过：日志停在「正在退出 Codex…」），独立任务仍会接管并完成重启。
+`finish-launch.ps1` 有 60 秒宽限期：若 Codex 正被启动器重新拉起（进程在、端口未开），它只等待而不插手。
 
 护栏（都在 `config.json`）：`autoRestart` 总开关、`autoRestartDelaySeconds`、`autoRestartCooldownMinutes`；每个会话只尝试一次，连续失败 2 次自动停用（写 `auto-restart.json`）。
 
@@ -57,7 +62,23 @@ Codex 把 MCP 服务放在**作业对象（Job Object）**里，Codex 一退出�
 后果：**计划任务在该目录里既跑不了脚本，也找不到 exe**（exe 报 `0x80070002`，脚本任务 `Last Result -196608`），但同一份文件放到 `%LOCALAPPDATA%\Programs\...`、`%USERPROFILE%\...`、`%TEMP%\...` 都正常。
 所以安装目录固定用 `%LOCALAPPDATA%\Programs\DeepSeekUsage`。
 
-### 5.3 其它
+### 5.3 重启链自身也可能被杀
+
+实测一次失败：日志停在「正在退出 Codex…（9 个进程）」，Codex 没关掉，负责重启的进程也没了。
+应对：把重启拆成两段——启动器先埋独立收尾任务，再去关 Codex；关闭方式改为先 `CloseMainWindow`、失败则 `taskkill /PID <主进程> /T /F` 强杀整棵树。
+
+### 5.4 CDP 通道会被挂起的连接堵死
+
+反复连接调试端口后出现过：`/json/list` 正常、`Target.attachToTarget` 也能成功，但 `Runtime.evaluate` 一律超时——
+助手探针拿不到响应，日志里不再出现 `codex window found`。这种状态只有重启 Codex 才能清除，调试 CDP 时要及时关闭连接。
+
+### 5.5 双 BOM 会让 param() 报错
+
+用脚本改 `.ps1` 时若「读文件没剥掉 BOM、写回又加了一次」，文件开头会出现两个 `EF BB BF`。
+后果是第一行注释不再是注释，`param()` 不再位于文件首部，解析器报 “The assignment expression is not valid”。
+读写 `.ps1` 时务必：读时剥 BOM，写时只加一个。
+
+### 5.6 其它
 
 - 火绒（本机同时接管了 Defender）会拦脚本类启动：桌面双击 `powershell -File xxx.ps1` 可能毫无反应。排错时优先用日志判断，而不是凭现象猜。
 - cc-switch 把每个供应商的**整份 config.toml** 存在自己的数据库里，切换供应商时整份覆盖写回，所以 `[mcp_servers.deepseek_usage]` 可能被抹掉；重跑 `install.ps1` 即可恢复。
@@ -78,6 +99,7 @@ Codex 把 MCP 服务放在**作业对象（Job Object）**里，Codex 一退出�
 | 版本 | 内容 |
 |---|---|
 | `1.0.0` | 首个独立版：菜单栏卡片、CDP 注入、MCP 随 Codex 启停、计划任务自动修复。 |
+| `1.1.1` | 首行改为「账户余额」（充值+赠送，取接口总额口径，与官网一致）；新增 `finish-launch.ps1` 独立收尾；启动器加 `-ForceRestart`；关闭 Codex 改用 taskkill。 |
 
 ## 8. 维护建议
 

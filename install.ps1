@@ -24,6 +24,7 @@ New-Item -ItemType Directory -Force -Path $Target | Out-Null
 Copy-Item -LiteralPath (Join-Path $Source 'helper\deepseek-usage-helper.ps1') -Destination (Join-Path $Target 'deepseek-usage-helper.ps1') -Force
 Copy-Item -LiteralPath (Join-Path $Source 'helper\mcp-server.ps1') -Destination (Join-Path $Target 'mcp-server.ps1') -Force
 Copy-Item -LiteralPath (Join-Path $Source 'helper\auto-restart.ps1') -Destination (Join-Path $Target 'auto-restart.ps1') -Force
+Copy-Item -LiteralPath (Join-Path $Source 'helper\finish-launch.ps1') -Destination (Join-Path $Target 'finish-launch.ps1') -Force
 Copy-Item -LiteralPath (Join-Path $Source 'deepseek-usage-panel.js') -Destination (Join-Path $Target 'deepseek-usage-panel.js') -Force
 Copy-Item -LiteralPath (Join-Path $Source 'launch-codex.ps1') -Destination (Join-Path $Target 'launch-codex.ps1') -Force
 Copy-Item -LiteralPath (Join-Path $Source 'launch-codex.cmd') -Destination (Join-Path $Target 'launch-codex.cmd') -Force

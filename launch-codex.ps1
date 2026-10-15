@@ -13,7 +13,8 @@ param(
   [int]$Port = 9229,
   [switch]$DryRun,
   [switch]$Force,
-  [switch]$NoPrompt
+  [switch]$NoPrompt,
+  [switch]$ForceRestart
 )
 
 $ErrorActionPreference = 'Continue'
@@ -74,11 +75,13 @@ function Stop-Codex {
   $procs = @(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue)
   if ($procs.Count -eq 0) { return }
   Write-LaunchLog ('正在退出 Codex…（' + $procs.Count + ' 个进程）')
+  $main = @(Get-CimInstance Win32_Process -Filter "Name='ChatGPT.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and ($_.CommandLine -notmatch '--type=') })
   foreach ($p in $procs) { try { $null = $p.CloseMainWindow() } catch {} }
   $deadline = (Get-Date).AddSeconds(12)
   while ((Get-Date) -lt $deadline -and @(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue).Count -gt 0) {
     Start-Sleep -Milliseconds 400
   }
+  foreach ($m in $main) { & taskkill.exe /PID $m.ProcessId /T /F 2>&1 | Out-Null }
   foreach ($p in @(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue)) {
     try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
   }
@@ -135,8 +138,8 @@ Write-LaunchLog ('Codex 版本 ' + $info.Version)
 Write-LaunchLog ('exe  : ' + $info.Exe)
 Write-LaunchLog ('aumid: ' + $info.Aumid)
 
-if (Test-DebugPort $Port) {
-  Write-LaunchLog ('调试端口 ' + $Port + ' 已在监听，无需重启。')
+if ((-not $ForceRestart) -and (Test-DebugPort $Port)) {
+  Write-LaunchLog ('调试端口 ' + $Port + ' 已在监听，无需重启（加 -ForceRestart 可强制重启）。')
   if (-not $DryRun -and -not $NoPrompt) { Start-Sleep -Seconds 2 }
   exit 0
 }
@@ -149,7 +152,27 @@ if ($DryRun) {
   exit 0
 }
 
+# 先埋一个独立的收尾任务：万一关 Codex 的过程中本进程被杀，它也会把 Codex 重新拉起来并带上端口。
+function Start-FinishTask([int]$Port, [int]$DelaySeconds) {
+  $finish = Join-Path $Root 'finish-launch.ps1'
+  if (-not (Test-Path $finish)) { Write-LaunchLog ('收尾脚本不存在: ' + $finish); return $false }
+  $taskName = 'CodexDeepSeekUsageFinish'
+  $argString = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $finish + '" -Port ' + $Port + ' -DelaySeconds ' + $DelaySeconds
+  try {
+    & schtasks.exe /create /f /tn $taskName /tr ('powershell.exe ' + $argString) /sc once /st 23:59 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-LaunchLog ('收尾任务创建失败，返回码 ' + $LASTEXITCODE); return $false }
+    & schtasks.exe /run /tn $taskName 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-LaunchLog ('收尾任务启动失败，返回码 ' + $LASTEXITCODE); return $false }
+    Write-LaunchLog ('已预埋独立收尾任务（' + $DelaySeconds + ' 秒后接管）')
+    return $true
+  } catch {
+    Write-LaunchLog ('收尾任务异常: ' + $_.Exception.Message)
+    return $false
+  }
+}
+
 if ($running.Count -gt 0) {
+  if (-not $DryRun) { $null = Start-FinishTask -Port $Port -DelaySeconds 20 }
   if (-not $Force -and -not $NoPrompt) {
     Write-Host ''
     $answer = Read-Host '需要退出并重启 Codex 才能带上调试端口。现在重启？(Y/N)'

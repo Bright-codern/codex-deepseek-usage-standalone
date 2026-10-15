@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         DeepSeek 消耗
-// @description  在 Codex 顶部菜单栏加一个「消耗」按钮，显示 DeepSeek 充值余额与今日消费
-// @version      1.0.12
+// @description  在 Codex 顶部菜单栏加一个「消耗」按钮，显示 DeepSeek 账户余额（充值+赠送）与今日消费
+// @version      1.0.13
 // @match        app://-/*
 // @grant        none
 // ==/UserScript==
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '1.0.12';
+  var VERSION = '1.0.13';
   if (window.__dsUsageUIVersion === VERSION) return;
   window.__dsUsageUIVersion = VERSION;
 
@@ -167,8 +167,13 @@
     var symbol = data.symbol || '';
     var rows = [];
 
-    if (data.toppedUpBalance !== null && data.toppedUpBalance !== undefined) {
-      rows.push(row('充值余额', money(data.toppedUpBalance, symbol)));
+    // 账户余额 = 充值余额 + 赠送余额；优先用助手算好的 accountBalance，
+    // 兼容旧数据时退回 totalBalance（DeepSeek 接口的 total_balance 也是两者之和）。
+    var accountBalance = (data.accountBalance !== null && data.accountBalance !== undefined)
+      ? data.accountBalance
+      : data.totalBalance;
+    if (accountBalance !== null && accountBalance !== undefined) {
+      rows.push(row('账户余额', money(accountBalance, symbol)));
     }
     rows.push(row('今日消费', money(data.todaySpend, symbol)));
 

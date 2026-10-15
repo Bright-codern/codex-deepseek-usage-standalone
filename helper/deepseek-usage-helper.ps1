@@ -268,6 +268,7 @@ function Collect {
     totalBalance = $null
     toppedUpBalance = $null
     grantedBalance = $null
+    accountBalance = $null
     balanceUnavailable = $null
     todaySpend = $null
     todaySpendSource = $null
@@ -289,6 +290,12 @@ function Collect {
         $payload.totalBalance = [Math]::Round($balance.total, 2)
         $payload.toppedUpBalance = [Math]::Round($balance.toppedUp, 2)
         $payload.grantedBalance = [Math]::Round($balance.granted, 2)
+        # 账户余额 = 充值余额 + 赠送余额。
+        # 优先用接口的 total_balance：它是全精度相加后再取整，与官网显示一致；
+        # 若该项缺失或为 0，再退回自行相加（避免百分比舍入造成的 1 分误差）。
+        $account = [double]$balance.total
+        if ($account -le 0) { $account = [double]$balance.toppedUp + [double]$balance.granted }
+        $payload.accountBalance = [Math]::Round($account, 2)
       } catch {
         $payload.balanceUnavailable = $_.Exception.Message
         Write-Log "balance failed: $($_.Exception.Message)"
